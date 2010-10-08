@@ -18,13 +18,13 @@ namespace Raven.ManagedStorage.Degenerate
             public int Size { get; set; }
         }
 
-        private readonly ConcurrentDictionary<JToken, PositionInFile> index =
-            new ConcurrentDictionary<JToken, PositionInFile>(JTokenComparer.Instance);
+        private readonly ConcurrentDictionary<JToken, PositionInFile> keyToFilePos = new ConcurrentDictionary<JToken, PositionInFile>(JTokenComparer.Instance);
+
+        private readonly SortedSet<JToken> index = new SortedSet<JToken>(JTokenComparer.Instance);
 
         private readonly ConcurrentDictionary<JToken, Guid> keysModifiedInTx = new ConcurrentDictionary<JToken, Guid>();
 
-        private readonly ConcurrentDictionary<Guid, List<Command>> operationsInTransactions =
-            new ConcurrentDictionary<Guid, List<Command>>();
+        private readonly ConcurrentDictionary<Guid, List<Command>> operationsInTransactions = new ConcurrentDictionary<Guid, List<Command>>();
 
         private readonly IPersistentSource persistentSource;
 
@@ -40,7 +40,36 @@ namespace Raven.ManagedStorage.Degenerate
 
         public int ItemCount
         {
-            get { return index.Count; }
+            get { return keyToFilePos.Count; }
+        }
+
+        public JToken First
+        {
+            get
+            {
+                lock(index)
+                    return index.Min;
+            }
+        }
+
+        public JToken Last
+        {
+            get
+            {
+                lock(index)
+                    return index.Max;
+            }
+        }
+
+        public IEnumerable<JToken> GreaterThanOrEqual(JToken key)
+        {
+            lock(index)
+            {
+                foreach (var item in index.GetViewBetween(key, index.Max))
+                {
+                    yield return item;
+                }
+            }
         }
 
         internal void ApplyCommands(IEnumerable<Command> cmds)
@@ -118,7 +147,7 @@ namespace Raven.ManagedStorage.Degenerate
             }
 
             PositionInFile pos;
-            if (index.TryGetValue(key, out pos) == false)
+            if (keyToFilePos.TryGetValue(key, out pos) == false)
                 return null;
 
             return ReadData(pos.Position, pos.Size);
@@ -224,23 +253,27 @@ namespace Raven.ManagedStorage.Degenerate
 
         private void AddInteral(JToken key, PositionInFile position)
         {
-            index.AddOrUpdate(key, position, (token, oldPos) =>
+            keyToFilePos.AddOrUpdate(key, position, (token, oldPos) =>
             {
                 WasteCount += 1;
                 return position;
             });
+            lock (index)
+                index.Add(key);
         }
 
         private void RemoveInternal(JToken key)
         {
             PositionInFile _;
-            index.TryRemove(key, out _);
+            keyToFilePos.TryRemove(key, out _);
             WasteCount += 1;
+            lock (index)
+                index.Remove(key);
         }
 
         internal void CopyCommittedData(Stream tempData, List<Command> cmds)
         {
-            foreach (var kvp in index) // copy committed data
+            foreach (var kvp in keyToFilePos) // copy committed data
             {
                 long pos = tempData.Position;
                 byte[] data = ReadData(kvp.Value.Position, kvp.Value.Size);

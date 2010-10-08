@@ -53,6 +53,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Removes.cs" />
     <Compile Include="SimpleFileTest.cs" />
+    <Compile Include="Sorting.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Raven.ManagedStorage.Degenerate\Raven.ManagedStorage.Degenerate.csproj">
