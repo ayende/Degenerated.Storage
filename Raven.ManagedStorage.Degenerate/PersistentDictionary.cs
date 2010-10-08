@@ -38,6 +38,11 @@ namespace Raven.ManagedStorage.Degenerate
 
         public int WasteCount { get; private set; }
 
+        public int ItemCount
+        {
+            get { return index.Count; }
+        }
+
         internal void ApplyCommands(IEnumerable<Command> cmds)
         {
             foreach (Command command in cmds)

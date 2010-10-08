@@ -24,7 +24,7 @@ namespace Raven.Storage.DegenerateManagedStorage
 
             Commit(txId);
 
-            Compact();
+            PerformIdleTasks();
 
             Assert.True( oldSize > persistentSource.Data.Length);
         }
@@ -48,7 +48,7 @@ namespace Raven.Storage.DegenerateManagedStorage
             var oldSize = persistentSource.Data.Length;
 
             Commit(txId);
-            Compact();
+            PerformIdleTasks();
 
             Assert.True(oldSize > persistentSource.Data.Length);
 
@@ -78,7 +78,7 @@ namespace Raven.Storage.DegenerateManagedStorage
             var oldSize = persistentSource.Data.Length;
 
             Commit(txId);
-            Compact();
+            PerformIdleTasks();
 
             Assert.True(oldSize > persistentSource.Data.Length);
 

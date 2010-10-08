@@ -145,5 +145,31 @@ namespace Raven.ManagedStorage.Degenerate
                 persistentSource.ReplaceAtomically(tempData, tempLog);
             }
         }
+
+
+        /// <summary>
+        /// This method should be called when the application is idle
+        /// It is used for book keeping tasks such as compacting the data storage file.
+        /// </summary>
+        public void PerformIdleTasks()
+        {
+            if (CompactionRequired() == false) 
+                return;
+
+            Compact();
+        }
+
+
+        private bool CompactionRequired()
+        {
+            var itemsCount = dictionaries.Sum(x => x.ItemCount);
+            var wasteCount = dictionaries.Sum(x => x.WasteCount);
+
+            if (itemsCount < 10000) // for small data sizes, we cleanup on 100% waste
+                return wasteCount > itemsCount;
+            if (itemsCount < 100000) // for meduim data sizes, we cleanup on 50% waste
+                return wasteCount > (itemsCount / 2);
+            return wasteCount > (itemsCount / 10); // on large data size, we cleanup on 10% waste
+        }
     }
 }

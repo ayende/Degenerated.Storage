@@ -30,9 +30,9 @@ namespace Raven.Storage.DegenerateManagedStorage
             persistentDictionary = aggregateDictionary[0];
         }
 
-        protected void Compact()
+        protected void PerformIdleTasks()
         {
-            aggregateDictionary.Compact();
+            aggregateDictionary.PerformIdleTasks();
         }
 
         protected void Commit(Guid txId)
