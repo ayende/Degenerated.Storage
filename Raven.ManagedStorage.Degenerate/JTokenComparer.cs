@@ -65,11 +65,15 @@ namespace Raven.ManagedStorage.Degenerate
                         return compareTo;
                     return Compare(xProp.Value, yProp.Value);
                 case JTokenType.Integer:
+                    return x.Value<long>().CompareTo(y.Value<long>());
                 case JTokenType.Float:
+                    return (x.Value<double>()).CompareTo(y.Value<double>());
                 case JTokenType.String:
+                    return x.Value<string>().CompareTo(y.Value<string>());
                 case JTokenType.Boolean:
+                    return x.Value<bool>().CompareTo(y.Value<bool>());
                 case JTokenType.Date:
-                    return x.Value<IComparable>().CompareTo(y.Value<IComparable>());
+                    return x.Value<DateTime>().CompareTo(y.Value<DateTime>());
                 case JTokenType.Bytes:
                     var xBytes = x.Value<byte[]>();
                     var yBytes = y.Value<byte[]>();
@@ -108,16 +112,16 @@ namespace Raven.ManagedStorage.Degenerate
                 case JTokenType.Object:
                 case JTokenType.Bytes:
                 case JTokenType.Array:
-                    return obj.Aggregate(0, (current, val) => (current*397) ^ GetHashCode(val));
+                    return obj.Aggregate(0, (current, val) => (current * 397) ^ GetHashCode(val));
                 case JTokenType.Property:
-                    var prop = ((JProperty) obj);
-                    return (prop.Name.GetHashCode() * 397 )  ^ GetHashCode(prop.Value);
+                    var prop = ((JProperty)obj);
+                    return (prop.Name.GetHashCode() * 397) ^ GetHashCode(prop.Value);
                 case JTokenType.Integer:
                 case JTokenType.Float:
                 case JTokenType.String:
                 case JTokenType.Boolean:
                 case JTokenType.Date:
-                    return ((JValue) obj).Value.GetHashCode();
+                    return ((JValue)obj).Value.GetHashCode();
                 case JTokenType.Raw:
                 case JTokenType.Comment:
                 case JTokenType.Constructor:

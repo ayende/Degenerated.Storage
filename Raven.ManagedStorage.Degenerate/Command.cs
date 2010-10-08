@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json.Linq;
+﻿using System;
+using Newtonsoft.Json.Linq;
 using Raven.ManagedStorage.Degenerate.Commands;
 
 namespace Raven.ManagedStorage.Degenerate
@@ -9,5 +10,6 @@ namespace Raven.ManagedStorage.Degenerate
         public JToken Key { get; set; }
         public CommandType Type { get; set; }
         public long Position { get; set; }
+        public int DictionaryId { get; set; }
     }
 }

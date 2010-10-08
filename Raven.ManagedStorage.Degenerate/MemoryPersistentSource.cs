@@ -7,8 +7,14 @@ namespace Raven.ManagedStorage.Degenerate
     {
         public MemoryPersistentSource()
         {
+            SyncLock = new object();
             Data = new MemoryStream();
             Log = new MemoryStream();
+        }
+
+        public object SyncLock
+        {
+            get; private set;
         }
 
         public Stream Data

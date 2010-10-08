@@ -42,7 +42,7 @@ namespace Raven.Storage.DegenerateManagedStorage
 
             Assert.True(persistentDictionary.Add(JToken.FromObject("123"), new byte[] { 1, 2, 4, 5 }, txId));
 
-            persistentDictionary.Commit(txId);
+            Commit(txId);
 
             var data = persistentDictionary.Read(JToken.FromObject("123"), Guid.NewGuid());
        

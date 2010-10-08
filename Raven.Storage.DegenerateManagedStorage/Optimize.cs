@@ -22,11 +22,12 @@ namespace Raven.Storage.DegenerateManagedStorage
 
             var oldSize = persistentSource.Data.Length;
 
-            persistentDictionary.Commit(txId);
+            Commit(txId);
+
+            Compact();
 
             Assert.True( oldSize > persistentSource.Data.Length);
         }
-
 
         [Fact]
         public void AfterOptimizeCommittedDataIsStillThere()
@@ -46,7 +47,8 @@ namespace Raven.Storage.DegenerateManagedStorage
            
             var oldSize = persistentSource.Data.Length;
 
-            persistentDictionary.Commit(txId);
+            Commit(txId);
+            Compact();
 
             Assert.True(oldSize > persistentSource.Data.Length);
 
@@ -75,7 +77,8 @@ namespace Raven.Storage.DegenerateManagedStorage
 
             var oldSize = persistentSource.Data.Length;
 
-            persistentDictionary.Commit(txId);
+            Commit(txId);
+            Compact();
 
             Assert.True(oldSize > persistentSource.Data.Length);
 

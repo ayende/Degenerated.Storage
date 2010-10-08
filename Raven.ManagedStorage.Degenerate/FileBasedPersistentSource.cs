@@ -14,6 +14,7 @@ namespace Raven.ManagedStorage.Degenerate
 
         public FileBasedPersistentSource(string basePath, string prefix)
         {
+            SyncLock = new object();
             this.basePath = basePath;
             dataPath = Path.Combine(basePath, prefix + ".data");
             logPath = Path.Combine(basePath, prefix + ".log");
@@ -27,6 +28,12 @@ namespace Raven.ManagedStorage.Degenerate
 
         #region IPersistentSource Members
 
+        public object SyncLock
+        {
+            get;
+            private set;
+        }
+
         public Stream Data
         {
             get { return data; }
@@ -35,7 +42,7 @@ namespace Raven.ManagedStorage.Degenerate
         public Stream Log
         {
             get { return log; }
-           
+
         }
 
         public void ReplaceAtomically(Stream newData, Stream newLog)
@@ -58,10 +65,10 @@ namespace Raven.ManagedStorage.Degenerate
 
             string renamedDataFile = dataPath + ".rename_op";
             string renamedLogFile = logPath + ".rename_op";
-            
+
             File.Move(dataPath, renamedDataFile);
             File.Move(logPath, renamedLogFile);
-            
+
             File.Move(logTempName, logPath);
             File.Move(dataTempName, dataPath);
 
@@ -97,7 +104,7 @@ namespace Raven.ManagedStorage.Degenerate
                 return;
 
             if (File.Exists(file))
-                // we successfully renamed the new file and crashed before we could remove the old copy
+            // we successfully renamed the new file and crashed before we could remove the old copy
             {
                 //just complete the op and we are good (committed)
                 File.Delete(renamedFile);

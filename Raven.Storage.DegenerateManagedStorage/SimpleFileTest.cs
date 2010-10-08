@@ -8,28 +8,41 @@ namespace Raven.Storage.DegenerateManagedStorage
     {
         protected PersistentDictionary persistentDictionary;
         protected FileBasedPersistentSource persistentSource;
+        private readonly string tempPath;
+        private AggregateDictionary aggregateDictionary;
 
         public SimpleFileTest()
         {
+            tempPath = Path.GetTempPath();
             OpenDictionary();
         }
 
         protected void Reopen()
         {
-            Dispose();
+            persistentSource.Dispose();
             OpenDictionary();
         }
 
         protected void OpenDictionary()
         {
-            persistentSource = new FileBasedPersistentSource(Path.GetTempPath(), "test_");
-            persistentDictionary = new PersistentDictionary(persistentSource);
+            persistentSource = new FileBasedPersistentSource(tempPath, "test_");
+            aggregateDictionary = new AggregateDictionary(persistentSource, 1);
+            persistentDictionary = aggregateDictionary[0];
         }
 
+        protected void Compact()
+        {
+            aggregateDictionary.Compact();
+        }
+
+        protected void Commit(Guid txId)
+        {
+            aggregateDictionary.Commit(txId);
+        }
 
         public void Dispose()
         {
-            persistentDictionary.Dispose();
+            persistentSource.Dispose();
             persistentSource.Delete();
         }
     }

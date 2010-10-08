@@ -29,7 +29,7 @@ namespace Raven.Storage.DegenerateManagedStorage
             var txId = Guid.NewGuid();
             Assert.True(persistentDictionary.Add(JToken.FromObject("a"), new byte[] { 1 }, txId));
 
-            persistentDictionary.Commit(txId);
+            Commit(txId);
 
             Assert.True(persistentDictionary.Add(JToken.FromObject("a"), new byte[] { 1 }, Guid.NewGuid()));
         }
@@ -40,7 +40,7 @@ namespace Raven.Storage.DegenerateManagedStorage
             var txId = Guid.NewGuid();
             Assert.True(persistentDictionary.Add(JToken.FromObject("a"), new byte[] { 1 }, txId));
 
-            persistentDictionary.Commit(txId);
+            Commit(txId);
 
             Assert.True(persistentDictionary.Remove(JToken.FromObject("a"), Guid.NewGuid()));
         }
