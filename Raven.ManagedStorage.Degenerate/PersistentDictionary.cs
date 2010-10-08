@@ -12,8 +12,14 @@ namespace Raven.ManagedStorage.Degenerate
 {
     public class PersistentDictionary : IDisposable
     {
-        private readonly ConcurrentDictionary<JToken, long> index =
-            new ConcurrentDictionary<JToken, long>(JTokenComparer.Instance);
+        private class PositionInFile
+        {
+            public long Position { get; set; }
+            public int Size { get; set; }
+        }
+
+        private readonly ConcurrentDictionary<JToken, PositionInFile> index =
+            new ConcurrentDictionary<JToken, PositionInFile>(JTokenComparer.Instance);
 
         private readonly ConcurrentDictionary<JToken, Guid> keysModifiedInTx = new ConcurrentDictionary<JToken, Guid>();
 
@@ -53,20 +59,10 @@ namespace Raven.ManagedStorage.Degenerate
             while (true)
             {
                 long lastGoodPosition = persistentSource.Log.Position;
-                int cmdCount;
-                if (ReadInt32(lastGoodPosition, out cmdCount) == false)
-                    return;
 
-                var cmds = new Command[cmdCount];
-                for (int i = 0; i < cmdCount; i++)
-                {
-                    cmds[i] = ReadCommand(lastGoodPosition);
-                    if (cmds[i] == null)
-                        return;
-                }
-
-                // now we know we loaded all the operations in the tx, we can apply them.
-
+                var cmds = ReadCommands(lastGoodPosition);
+                if (cmds == null)
+                    break;
                 ApplyCommands(cmds);
             }
         }
@@ -78,7 +74,11 @@ namespace Raven.ManagedStorage.Degenerate
                 switch (command.Type)
                 {
                     case CommandType.Put:
-                        AddInteral(command.Key, command.Position);
+                        AddInteral(command.Key, new PositionInFile
+                        {
+                            Position = command.Position,
+                            Size = command.Size
+                        });
                         break;
                     case CommandType.Delete:
                         RemoveInternal(command.Key);
@@ -89,78 +89,24 @@ namespace Raven.ManagedStorage.Degenerate
             }
         }
 
-        private Command ReadCommand(long lastGoodPosition)
+        private Command[] ReadCommands(long lastGoodPosition)
         {
-            int cmdTypeAsByte = persistentSource.Log.ReadByte();
-            if (cmdTypeAsByte == -1) // truncated data?
-            {
-                persistentSource.Log.SetLength(lastGoodPosition); // truncate the file to remove this
-                return null;
-            }
-
-            JToken key;
             try
             {
-                key = JToken.ReadFrom(new BsonReader(persistentSource.Log));
+                var cmds = (JArray)JToken.ReadFrom(new BsonReader(persistentSource.Log));
+                return cmds.Select(cmd => new Command
+                {
+                    Key = cmd.Value<JObject>("key"),
+                    Position = cmd.Value<long>("position"),
+                    Size = cmd.Value<int>("size"),
+                    Type = (CommandType) cmd.Value<byte>("type")
+                }).ToArray();
             }
             catch (Exception)
             {
-                persistentSource.Log.SetLength(lastGoodPosition); // truncate the file to remove this
+                persistentSource.Log.SetLength(lastGoodPosition);//truncate log to last known good position
                 return null;
             }
-
-            long position = 0;
-            var commandType = (CommandType) cmdTypeAsByte;
-            if (commandType == CommandType.Put)
-            {
-                if (ReadInt64(lastGoodPosition, out position) == false)
-                    return null;
-            }
-            return new Command
-            {
-                Key = key,
-                Position = position,
-                Type = commandType
-            };
-        }
-
-        private bool ReadInt32(long lastGoodPosition, out int value)
-        {
-            int read = 0;
-            value = -1;
-            var buf = new byte[sizeof (int)];
-            do
-            {
-                int dataRead = persistentSource.Log.Read(buf, read, buf.Length - read);
-                if (dataRead == 0) // nothing read, EOF, probably truncated write, 
-                {
-                    persistentSource.Log.SetLength(lastGoodPosition); // truncate the file to remove this
-                    return false;
-                }
-                read += dataRead;
-            } while (read < buf.Length);
-            value = BitConverter.ToInt32(buf, 0);
-            return true;
-        }
-
-
-        private bool ReadInt64(long lastGoodPosition, out long value)
-        {
-            int read = 0;
-            value = -1;
-            var buf = new byte[sizeof (long)];
-            do
-            {
-                int dataRead = persistentSource.Log.Read(buf, read, buf.Length - read);
-                if (dataRead == 0) // nothing read, EOF, probably truncated write, 
-                {
-                    persistentSource.Log.SetLength(lastGoodPosition); // truncate the file to remove this
-                    return false;
-                }
-                read += dataRead;
-            } while (read < buf.Length);
-            value = BitConverter.ToInt64(buf, 0);
-            return true;
         }
 
         public bool Add(JToken key, byte[] value, Guid txId)
@@ -171,10 +117,8 @@ namespace Raven.ManagedStorage.Degenerate
                 if (keysModifiedInTx.TryGetValue(key, out existing) && existing != txId)
                     return false;
 
+                // we *always* write to the end
                 long position = persistentSource.Data.Position = persistentSource.Data.Length;
-                    // we *always* write to the end
-                byte[] lenInBytes = BitConverter.GetBytes(value.Length);
-                persistentSource.Data.Write(lenInBytes, 0, lenInBytes.Length);
                 persistentSource.Data.Write(value, 0, value.Length);
 
                 operationsInTransactions.GetOrAdd(txId, new List<Command>())
@@ -182,6 +126,7 @@ namespace Raven.ManagedStorage.Degenerate
                     {
                         Key = key,
                         Position = position,
+                        Size = value.Length,
                         Type = CommandType.Put
                     });
 
@@ -205,7 +150,7 @@ namespace Raven.ManagedStorage.Degenerate
                     switch (command.Type)
                     {
                         case CommandType.Put:
-                            return ReadData(command.Position);
+                            return ReadData(command.Position, command.Size);
                         case CommandType.Delete:
                             return null;
                         default:
@@ -214,14 +159,14 @@ namespace Raven.ManagedStorage.Degenerate
                 }
             }
 
-            long pos;
+            PositionInFile pos;
             if (index.TryGetValue(key, out pos) == false)
                 return null;
 
-            return ReadData(pos);
+            return ReadData(pos.Position, pos.Size);
         }
 
-        private byte[] ReadData(long pos)
+        private byte[] ReadData(long pos, int size)
         {
             var cacheKey = pos.ToString();
             var cached = cache.Get(cacheKey);
@@ -236,7 +181,7 @@ namespace Raven.ManagedStorage.Degenerate
                 if (cached != null)
                     return (byte[])cached;
 
-                buf = ReadDataNoCaching(pos);
+                buf = ReadDataNoCaching(pos, size);
             }
 
             cache[cacheKey] = buf;
@@ -244,26 +189,12 @@ namespace Raven.ManagedStorage.Degenerate
             return buf;
         }
 
-        private byte[] ReadDataNoCaching(long pos)
+        private byte[] ReadDataNoCaching(long pos, int size)
         {
             persistentSource.Data.Position = pos;
 
-            int read = 0;
-            var buf = new byte[sizeof(int)];
-            do
-            {
-                int dataRead = persistentSource.Data.Read(buf, read, buf.Length - read);
-                if (dataRead == 0) // nothing read, EOF, probably truncated write, 
-                {
-                    throw new InvalidDataException("Could not read data length, the data file is corrupt");
-                }
-                read += dataRead;
-            } while (read < buf.Length);
-
-            int len = BitConverter.ToInt32(buf, 0);
-
-            read = 0;
-            buf = new byte[len];
+            var read = 0;
+            var buf = new byte[size];
             do
             {
                 int dataRead = persistentSource.Data.Read(buf, read, buf.Length - read);
@@ -314,7 +245,7 @@ namespace Raven.ManagedStorage.Degenerate
                 foreach (var kvp in index) // copy committed data
                 {
                     long pos = tempData.Position;
-                    byte[] data = ReadData(kvp.Value);
+                    byte[] data = ReadData(kvp.Value.Position, kvp.Value.Size);
 
                     byte[] lenInBytes = BitConverter.GetBytes(data.Length);
                     tempData.Write(lenInBytes, 0, lenInBytes.Length);
@@ -324,19 +255,20 @@ namespace Raven.ManagedStorage.Degenerate
                     {
                         Key = kvp.Key,
                         Position = pos,
+                        Size = kvp.Value.Size,
                         Type = CommandType.Put
                     }, tempLog);
 
-                    index.TryUpdate(kvp.Key, pos, kvp.Value);
+                    kvp.Value.Position = pos;
                 }
 
                 // copy uncommitted data
-                foreach (
-                    Command uncommitted in
-                        operationsInTransactions.SelectMany(x => x.Value).Where(x => x.Type == CommandType.Put))
+                foreach (Command uncommitted in operationsInTransactions
+                        .SelectMany(x => x.Value)
+                        .Where(x => x.Type == CommandType.Put))
                 {
                     long pos = tempData.Position;
-                    byte[] data = ReadData(uncommitted.Position);
+                    byte[] data = ReadData(uncommitted.Position, uncommitted.Size);
 
                     byte[] lenInBytes = BitConverter.GetBytes(data.Length);
                     tempData.Write(lenInBytes, 0, lenInBytes.Length);
@@ -409,7 +341,7 @@ namespace Raven.ManagedStorage.Degenerate
             }
         }
 
-        public void AddInteral(JToken key, long position)
+        private void AddInteral(JToken key, PositionInFile position)
         {
             index.AddOrUpdate(key, position, (token, oldPos) =>
             {
@@ -418,9 +350,9 @@ namespace Raven.ManagedStorage.Degenerate
             });
         }
 
-        public void RemoveInternal(JToken key)
+        private void RemoveInternal(JToken key)
         {
-            long _;
+            PositionInFile _;
             index.TryRemove(key, out _);
             WasteCount += 1;
         }
